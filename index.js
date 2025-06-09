@@ -1,78 +1,65 @@
 const express = require('express');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require('uuid'); // Generate unique session IDs
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-const sessions = new Map(); // key: id, value: session object
-const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 seconds
+let sessions = {};
 
-// Register a session
+// Register a new session
 app.post('/register', (req, res) => {
+    const { name, ip, port, maxPlayers } = req.body;
     const id = uuidv4();
-    const now = Date.now();
-    const session = {
+
+    sessions[id] = {
         id,
-        name: req.body.name || 'Unnamed Session',
-        ip: req.body.ip || req.ip,
-        port: req.body.port || 7777,
-        maxPlayers: req.body.maxPlayers || 10,
-        currentPlayers: req.body.currentPlayers || 0,
-        lastHeartbeat: now
+        name,
+        ip,
+        port,
+        maxPlayers,
+        currentPlayers: 1,
+        lastHeartbeat: Date.now(),
     };
 
-    sessions.set(id, session);
-    res.json({ id });
+    res.json({ success: true, id });
 });
 
-// Unregister a session manually
-app.delete('/unregister/:id', (req, res) => {
-    const id = req.params.id;
-    if (sessions.has(id)) {
-        sessions.delete(id);
-        return res.status(200).send('Session unregistered');
+// Heartbeat to keep session alive and update player count
+app.post('/heartbeat', (req, res) => {
+    const { id, currentPlayers } = req.body;
+
+    if (sessions[id]) {
+        sessions[id].lastHeartbeat = Date.now();
+        sessions[id].currentPlayers = currentPlayers || sessions[id].currentPlayers;
+        res.json({ success: true });
     } else {
-        return res.status(404).send('Session not found');
+        res.status(404).json({ success: false, message: "Session not found" });
     }
 });
 
-// Heartbeat to keep session alive + optionally update player count
-app.post('/heartbeat/:id', (req, res) => {
-    const id = req.params.id;
-    const session = sessions.get(id);
+// Unregister a session
+app.post('/unregister', (req, res) => {
+    const { id } = req.body;
 
-    if (session) {
-        session.lastHeartbeat = Date.now();
-        if (typeof req.body.currentPlayers === 'number') {
-            session.currentPlayers = req.body.currentPlayers;
-        }
-        sessions.set(id, session);
-        return res.status(200).send('Heartbeat received');
+    if (sessions[id]) {
+        delete sessions[id];
+        res.json({ success: true });
     } else {
-        return res.status(404).send('Session not found');
+        res.status(404).json({ success: false, message: "Session not found" });
     }
 });
 
-// Get all active sessions (filtering out dead ones)
+// Fetch all active sessions (with 15-second timeout)
 app.get('/sessions', (req, res) => {
     const now = Date.now();
-    const activeSessions = [];
-
-    for (const [id, session] of sessions.entries()) {
-        if (now - session.lastHeartbeat <= HEARTBEAT_TIMEOUT) {
-            activeSessions.push(session);
-        } else {
-            sessions.delete(id); // prune stale
-        }
-    }
-
+    const activeSessions = Object.values(sessions).filter(session => (now - session.lastHeartbeat) < 15000);
     res.json(activeSessions);
 });
 
 app.listen(port, () => {
-    console.log(`🎮 Matchmaker backend listening on http://localhost:${port}`);
+    console.log(`Matchmaker server listening on port ${port}`);
 });
