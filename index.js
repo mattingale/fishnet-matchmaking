@@ -29,28 +29,32 @@ app.post('/register', (req, res) => {
 });
 
 // Heartbeat to keep session alive and update player count
-app.post('/heartbeat', (req, res) => {
-    const { id, currentPlayers } = req.body;
+app.post('/heartbeat/:id', (req, res) => {
+    const id = req.params.id;
+    const session = sessions[id];
 
-    if (sessions[id]) {
-        sessions[id].lastHeartbeat = Date.now();
-        sessions[id].currentPlayers = currentPlayers || sessions[id].currentPlayers;
-        res.json({ success: true });
-    } else {
-        res.status(404).json({ success: false, message: "Session not found" });
+    if (!session) {
+        return res.status(404).json({ success: false, message: "Session not found" });
     }
+
+    session.lastHeartbeat = Date.now();
+    if (typeof req.body.currentPlayers === 'number') {
+        session.currentPlayers = req.body.currentPlayers;
+    }
+
+    res.json({ success: true });
 });
 
 // Unregister a session
-app.post('/unregister', (req, res) => {
-    const { id } = req.body;
+app.post('/unregister/:id', (req, res) => {
+    const id = req.params.id;
 
-    if (sessions[id]) {
-        delete sessions[id];
-        res.json({ success: true });
-    } else {
-        res.status(404).json({ success: false, message: "Session not found" });
+    if (!sessions[id]) {
+        return res.status(404).json({ success: false, message: "Session not found" });
     }
+
+    delete sessions[id];
+    res.json({ success: true });
 });
 
 // Fetch all active sessions (with 15-second timeout)
