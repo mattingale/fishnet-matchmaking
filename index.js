@@ -10,6 +10,11 @@ app.use(express.json());
 
 let sessions = {};
 
+// ✅ Debug log every incoming request
+app.use((req, res, next) => {
+    console.log(`➡️ ${req.method} ${req.originalUrl}`);
+    next();
+});
 // Register a new session
 app.post('/register', (req, res) => {
     const { name, ip, port, maxPlayers } = req.body;
